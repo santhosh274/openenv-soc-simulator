@@ -1,0 +1,45 @@
+{
+  "alerts": [
+    {
+      "id": "A1",
+      "severity": "high",
+      "description": "Ransomware encryption propagation detected",
+      "related_file": "F1"
+    },
+    {
+      "id": "A2",
+      "severity": "high",
+      "description": "Multiple files being encrypted",
+      "related_process": "P1"
+    }
+  ],
+  "files": [
+    {
+      "id": "F1",
+      "name": "ransom.exe",
+      "entropy": 8.1,
+      "is_malicious": true
+    },
+    {
+      "id": "F2",
+      "name": "data.bin",
+      "entropy": 7.5,
+      "is_malicious": true
+    },
+    {
+      "id": "F3",
+      "name": "normal.txt",
+      "entropy": 3.1,
+      "is_malicious": false
+    }
+  ],
+  "processes": [
+    {
+      "id": "P1",
+      "name": "encrypter.exe",
+      "parent": "F1",
+      "suspicious": true
+    }
+  ],
+  "max_steps": 8
+}

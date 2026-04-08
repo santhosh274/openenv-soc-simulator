@@ -1,0 +1,33 @@
+{
+  "alerts": [
+    {
+      "id": "A1",
+      "severity": "medium",
+      "description": "Unusual process chain detected",
+      "related_process": "P1"
+    }
+  ],
+  "files": [
+    {
+      "id": "F1",
+      "name": "launcher.exe",
+      "entropy": 6.5,
+      "is_malicious": false
+    }
+  ],
+  "processes": [
+    {
+      "id": "P1",
+      "name": "svchost32.exe",
+      "parent": "F1",
+      "suspicious": true
+    },
+    {
+      "id": "P2",
+      "name": "explorer.exe",
+      "parent": null,
+      "suspicious": false
+    }
+  ],
+  "max_steps": 8
+}

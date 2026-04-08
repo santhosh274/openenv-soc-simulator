@@ -1,0 +1,26 @@
+{
+  "alerts": [
+    {
+      "id": "A1",
+      "severity": "high",
+      "description": "Suspicious encryption activity detected",
+      "related_file": "F1"
+    }
+  ],
+  "files": [
+    {
+      "id": "F1",
+      "name": "encryptor.exe",
+      "entropy": 7.9,
+      "is_malicious": true
+    },
+    {
+      "id": "F2",
+      "name": "system.dll",
+      "entropy": 4.2,
+      "is_malicious": false
+    }
+  ],
+  "processes": [],
+  "max_steps": 8
+}

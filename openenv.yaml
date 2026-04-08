@@ -1,0 +1,87 @@
+name: security-incident-soc
+description: Deterministic SOC incident response simulation for OpenEnv. Agents act as security analysts responding to malware, behavioral attacks, and ransomware incidents.
+tasks:
+  - easy_known_malware
+  - medium_behavioral_attack
+  - hard_ransomware_chain
+models:
+  observation:
+    type: object
+    title: Observation
+    description: Security incident observation containing alerts, file metadata, process tree, and action results
+    properties:
+      alerts:
+        type: array
+        items:
+          type: string
+      file_metadata:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            entropy:
+              type: number
+      process_tree:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            parent:
+              type: string
+              nullable: true
+      last_action_result:
+        type: string
+    required:
+      - alerts
+      - file_metadata
+      - process_tree
+      - last_action_result
+  action:
+    type: object
+    title: Action
+    description: Security analyst action to take in the incident
+    properties:
+      type:
+        type: string
+        enum:
+          - investigate_file
+          - investigate_process
+          - quarantine_file
+          - kill_process
+          - ignore_alert
+          - escalate
+      target_id:
+        type: string
+        nullable: true
+    required:
+      - type
+  reward:
+    type: object
+    title: Reward
+    description: Reward signal with value and reason
+    properties:
+      value:
+        type: number
+        minimum: -10
+        maximum: 10
+      reason:
+        type: string
+    required:
+      - value
+      - reason
+metadata:
+  max_episode_steps: 8
+  version: 1.0
+  author: Security Team
+  difficulty:
+    easy_known_malware: easy
+    medium_behavioral_attack: medium
+    hard_ransomware_chain: hard
