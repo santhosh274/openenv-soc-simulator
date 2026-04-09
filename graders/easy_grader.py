@@ -1,32 +1,44 @@
+def safe_score(score: float) -> float:
+    """Clamp score to be strictly between 0 and 1."""
+    if score <= 0:
+        return 0.001
+    if score >= 1:
+        return 0.999
+    return score
+
+
 def grade(state):
     """
-    Task 1: Known Malware
-    Score components (always strictly between 0 and 1):
-      - base:          0.05  (always, prevents 0.0)
-      - containment:  +0.44  (a MALICIOUS file was quarantined — ID cross-checked)
-      - investigation:+0.45  (file was investigated before containment)
-      Max achievable:  0.94  (never hits 1.0)
-      Min achievable:  0.05  (before clamp; clamp floor is 0.001)
-
-    FIX vs original:
-      - Previously `direct_contained` was True even if a BENIGN file was
-        quarantined (len(state.quarantined_files) > 0).
-      - Now we cross-check quarantined file IDs against actually malicious
-        file IDs so false-positive quarantines do not earn the containment bonus.
+    Task 1: Known Malware — Grader
+    Score breakdown (all strictly between 0 and 1):
+    ┌─────────────────────────────────┬────────┐
+    │ Component                       │ Weight │
+    ├─────────────────────────────────┼────────┤
+    │ base (always awarded)           │  0.10  │
+    │ investigated flag set           │  0.35  │
+    │ malicious file correctly        │        │
+    │   quarantined (ID-verified)     │  0.44  │
+    │ containment flag (env-set)      │  0.05  │
+    ├─────────────────────────────────┼────────┤
+    │ Max achievable                  │  0.94  │
+    │ Min achievable (base only)      │  0.10  │
+    └─────────────────────────────────┴────────┘
     """
-    # IDs of files that are truly malicious in this scenario
+    # IDs of truly malicious files in this scenario
     malicious_ids = {f.id for f in state.files if f.is_malicious}
 
-    # Containment is only credited when at least one MALICIOUS file was quarantined
+    # Only award containment credit if a MALICIOUS file was quarantined
     correctly_quarantined = malicious_ids & set(state.quarantined_files)
-    direct_contained = len(correctly_quarantined) > 0 or state.flags.get("contained", False)
+    malicious_quarantined = len(correctly_quarantined) > 0
+
+    # Separate bonus for the env's own containment flag
+    env_contained = state.flags.get("contained", False)
 
     investigated = state.flags.get("investigated", False)
 
-    score = 0.05  # base — always > 0
-    score += 0.44 * int(direct_contained)
-    score += 0.45 * int(investigated)
+    score = 0.10
+    score += 0.35 * int(investigated)
+    score += 0.44 * int(malicious_quarantined)
+    score += 0.05 * int(env_contained)
 
-    # Strict clamp: guarantees 0 < score < 1 under all circumstances
-    score = max(0.001, min(0.999, score))
-    return round(score, 4)
+    return safe_score(score)
