@@ -62,7 +62,11 @@ def test_easy():
     check_strict(easy_grader.grade(s), "quarantined only")
 
     # Perfect: investigated + quarantined
-    s = make_state(quarantined=["F1"], investigated=True)
+    s = make_state(
+        quarantined=["F1"], 
+        investigated=True,
+        files=[FileSample(id='F1', name='malware.exe', entropy=8.0, is_malicious=True)]
+    )
     score = easy_grader.grade(s)
     check_strict(score, "perfect (investigated + quarantined)")
     assert score > 0.5, f"FAIL: perfect easy score should be > 0.5, got {score}"
@@ -92,7 +96,12 @@ def test_medium():
     check_strict(medium_grader.grade(s), "killed only")
 
     # Perfect: investigated + killed + no false
-    s = make_state(killed=["P1"], investigated=True, false_actions=0)
+    s = make_state(
+        killed=["P1"], 
+        investigated=True, 
+        false_actions=0,
+        processes=[Process(id='P1', name='bad.exe', parent=None, suspicious=True)]
+    )
     score = medium_grader.grade(s)
     check_strict(score, "perfect (killed + investigated)")
     assert score > 0.5, f"FAIL: perfect medium score should be > 0.5, got {score}"
@@ -127,8 +136,8 @@ def test_hard():
     s = make_state(
         quarantined=["F1", "F2"], killed=["P1"],
         step_count=3, max_steps=8, false_actions=0,
-        files=[HARD_FILES[2]],   # F3 remains (benign, not quarantined)
-        processes=[]
+        files=HARD_FILES,
+        processes=HARD_PROCS
     )
     score = hard_grader.grade(s)
     check_strict(score, "all threats handled early")

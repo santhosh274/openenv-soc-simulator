@@ -238,19 +238,18 @@ def run_episode(client: OpenAI, task: str, grader_func):
 # =========================
 def main():
     if not HF_TOKEN or len(HF_TOKEN.strip()) < 10:
-        print("⚠️  ERROR: HF_TOKEN is missing or invalid. API calls will 401.")
-        return
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+        print("⚠️  WARNING: HF_TOKEN is missing or invalid. API calls may fail and fallback actions will be used.", flush=True)
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "")
     results = []
     for task in TASKS:
         result = run_episode(client, task, TASK_GRADER_MAP[task])
         results.append(result)
-    print("\n" + "=" * 60)
-    print("FINAL RESULTS")
-    print("=" * 60)
+    print("\n" + "=" * 60, flush=True)
+    print("FINAL RESULTS", flush=True)
+    print("=" * 60, flush=True)
     for r in results:
-        print(f"{r['task']} → Score: {r['score']:.4f} | Success: {r['success']}")
-    print("=" * 60)
+        print(f"{r['task']} → Score: {r['score']:.4f} | Success: {r['success']}", flush=True)
+    print("=" * 60, flush=True)
 
 if __name__ == "__main__":
     main()
