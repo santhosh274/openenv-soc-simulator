@@ -1,16 +1,19 @@
 def safe_score(score: float) -> float:
-    """Clamp score to be strictly between 0 and 1."""
-    if score <= 0:
+    """Clamp score to be strictly between 0 and 1 (validator requirement)."""
+    try:
+        val = float(score)
+    except (TypeError, ValueError):
         return 0.001
-    if score >= 1:
+    if val <= 0.0:
+        return 0.001
+    if val >= 1.0:
         return 0.999
-    return score
-
+    return val
 
 def grade(state):
     """
     Task 2: Behavioral Attack — Grader
-    Score breakdown (all strictly between 0 and 1):
+    Score breakdown (strictly between 0 and 1):
     ┌──────────────────────────────────────┬────────┐
     │ Component                            │ Weight │
     ├──────────────────────────────────────┼────────┤
@@ -23,17 +26,13 @@ def grade(state):
     │ Min achievable (base − max penalty)  │  0.001 │
     └──────────────────────────────────────┴────────┘
     """
-    # IDs of truly suspicious processes in this scenario
     suspicious_ids = {p.id for p in state.processes if p.suspicious}
-
-    # Only award kill credit if a SUSPICIOUS process was killed
     correctly_killed = suspicious_ids & set(state.killed_processes)
     process_handled = len(correctly_killed) > 0
 
     investigated = state.flags.get("investigated", False)
     false_count = state.flags.get("false_actions", 0)
 
-    # Cap penalty
     false_penalty = min(false_count * 0.17, 0.34)
 
     score = 0.10

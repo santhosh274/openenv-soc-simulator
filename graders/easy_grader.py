@@ -1,16 +1,19 @@
 def safe_score(score: float) -> float:
-    """Clamp score to be strictly between 0 and 1."""
-    if score <= 0:
+    """Clamp score to be strictly between 0 and 1 (validator requirement)."""
+    try:
+        val = float(score)
+    except (TypeError, ValueError):
         return 0.001
-    if score >= 1:
+    if val <= 0.0:
+        return 0.001
+    if val >= 1.0:
         return 0.999
-    return score
-
+    return val
 
 def grade(state):
     """
     Task 1: Known Malware — Grader
-    Score breakdown (all strictly between 0 and 1):
+    Score breakdown (strictly between 0 and 1):
     ┌─────────────────────────────────┬────────┐
     │ Component                       │ Weight │
     ├─────────────────────────────────┼────────┤
@@ -24,16 +27,11 @@ def grade(state):
     │ Min achievable (base only)      │  0.10  │
     └─────────────────────────────────┴────────┘
     """
-    # IDs of truly malicious files in this scenario
     malicious_ids = {f.id for f in state.files if f.is_malicious}
-
-    # Only award containment credit if a MALICIOUS file was quarantined
     correctly_quarantined = malicious_ids & set(state.quarantined_files)
     malicious_quarantined = len(correctly_quarantined) > 0
 
-    # Separate bonus for the env's own containment flag
     env_contained = state.flags.get("contained", False)
-
     investigated = state.flags.get("investigated", False)
 
     score = 0.10
