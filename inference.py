@@ -37,6 +37,10 @@ BENCHMARK = "security-incident-soc"
 
 # =========================
 # ✅ Score Normalization
+# Must match grader clamp band: strictly (0, 1)
+# Using 0.01–0.99 as the safe outer band here;
+# graders use 0.001–0.999 internally, so this is
+# a redundant safety net only.
 # =========================
 def normalize_score(score: float) -> float:
     return max(0.01, min(0.99, float(score)))
@@ -45,17 +49,25 @@ def normalize_score(score: float) -> float:
 # =========================
 # Production Grade SYSTEM PROMPT
 # =========================
-SYSTEM_PROMPT = """You must take ONE of these exact actions:
+SYSTEM_PROMPT = """You are a Security Operations Center (SOC) analyst AI.
+Your job is to respond to security incidents by taking the correct action.
 
-For EASY task: quarantine_file('F1')
-For MEDIUM task: kill_process('P1')
-For HARD task: quarantine_file('F1'), then quarantine_file('F2'), then kill_process('P1')
+Available actions (use EXACT format):
+  investigate_file('FILE_ID')
+  investigate_process('PROCESS_ID')
+  quarantine_file('FILE_ID')
+  kill_process('PROCESS_ID')
+  ignore_alert()
+  escalate()
 
-Look at the current observation and choose the right action.
-- If you see F1 with [MALICIOUS] → quarantine_file('F1')
-- If you see P1 with [SUSPICIOUS] → kill_process('P1')
+Decision rules:
+- If a file shows [MALICIOUS] → quarantine_file('ID')
+- If a process shows [SUSPICIOUS] → kill_process('ID')
+- If unsure → investigate first before acting
+- For HARD task: handle ALL malicious files AND all suspicious processes
 
-Action format: kill_process('P1') or quarantine_file('F1') or ignore_alert()"""
+Always output exactly ONE action per response, nothing else.
+Example: quarantine_file('F1')"""
 
 
 def log_start(task: str):
@@ -105,10 +117,15 @@ def build_user_prompt(observation, step: int, memory: List[Dict]) -> str:
     ) or "  None"
 
     multi_hint = ""
-    if sum(1 for p in processes if p.get("suspicious")) > 1:
-        multi_hint = "\nNOTE: Multiple suspicious processes detected. Handle ALL."
+    suspicious_count = sum(1 for p in processes if p.get("suspicious"))
+    malicious_count = sum(1 for f in files if f.get("is_malicious"))
+    if suspicious_count > 1 or malicious_count > 1:
+        multi_hint = (
+            f"\nNOTE: {malicious_count} malicious file(s) and "
+            f"{suspicious_count} suspicious process(es) detected. Handle ALL of them."
+        )
 
-    return f"""Step {step}/8
+    return f"""Step {step}/{MAX_STEPS}
 
 Alerts:
 {alert_lines}
@@ -149,7 +166,7 @@ def parse_action(response_text: str) -> Action:
         if match:
             return Action(type=action, target_id=match.group(1) if match.groups() else None)
 
-    # 🔥 safer fallback
+    # Safer fallback: escalate rather than ignore, avoids ignore_alert penalty
     return Action(type="escalate", target_id=None)
 
 
@@ -164,6 +181,10 @@ def run_episode(client: OpenAI, task: str, grader_func):
     memory = []
     success = False
     step = 0
+
+    # FIX: Initialize score before try block so it is always bound,
+    # even if an exception fires before grader_func is reached.
+    score = 0.01
 
     log_start(task)
 
@@ -198,6 +219,8 @@ def run_episode(client: OpenAI, task: str, grader_func):
             obs, reward, done, _ = env.step(action)
 
             reward_val = reward.value if hasattr(reward, "value") else float(reward)
+            # FIX: clamp reward strictly inside (0, 1) — graders guarantee
+            # this too, but belt-and-suspenders here.
             reward_val = max(0.01, min(0.99, reward_val))
             rewards.append(reward_val)
 
@@ -207,7 +230,7 @@ def run_episode(client: OpenAI, task: str, grader_func):
             memory.append({
                 "step": step,
                 "action": action_str,
-                "result": error
+                "result": error,
             })
 
             log_step(step, action_str, reward_val, done, error)
@@ -215,13 +238,16 @@ def run_episode(client: OpenAI, task: str, grader_func):
             if done:
                 break
 
+        # FIX: Call grader once and reuse — avoids calling it twice
+        # (previously called separately inside try and finally).
         raw_score = grader_func(env.state)
         score = normalize_score(raw_score)
         success = score >= 0.5
 
     finally:
-        final_score = normalize_score(grader_func(env.state))
-        log_end(success, step, rewards, final_score)
+        # FIX: Use already-computed `score` rather than re-invoking the grader.
+        # `score` is guaranteed to be bound (initialized to 0.01 above).
+        log_end(success, step, rewards, score)
 
     return {
         "task": task,
@@ -248,14 +274,14 @@ def main():
         result = run_episode(client, task, TASK_GRADER_MAP[task])
         results.append(result)
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("FINAL RESULTS")
-    print("="*60)
+    print("=" * 60)
 
     for r in results:
         print(f"{r['task']} → Score: {r['score']:.2f} | Success: {r['success']}")
 
-    print("="*60)
+    print("=" * 60)
 
 
 if __name__ == "__main__":
