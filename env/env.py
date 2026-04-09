@@ -22,10 +22,10 @@ class SecurityIncidentEnv:
         # Filtered view per spec
         alert_summaries = [f"{a.severity.upper()}: {a.description}" for a in self.state.alerts]
         file_metadata = [
-            {'id': f.id, 'name': f.name, 'entropy': f.entropy, 'is_malicious': f.is_malicious} for f in self.state.files
+            {'id': f.id, 'name': f.name, 'entropy': f.entropy} for f in self.state.files
         ]
         process_tree = [
-            {'id': p.id, 'name': p.name, 'parent': p.parent, 'suspicious': p.suspicious} for p in self.state.processes
+            {'id': p.id, 'name': p.name, 'parent': p.parent} for p in self.state.processes
         ]
         return Observation(
             alerts=alert_summaries,  # List[str]
