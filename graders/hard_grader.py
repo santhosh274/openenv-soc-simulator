@@ -37,6 +37,6 @@ def grade(state):
     score -= false_penalty
     score += efficiency * 0.08
 
-    # Safety clamp
-    score = max(0.01, min(0.99, score))
+    # Strict clamp to ensure 0 < score < 1
+    score = max(0.001, min(0.999, score))
     return round(score, 4)

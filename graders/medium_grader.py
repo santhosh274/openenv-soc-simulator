@@ -21,6 +21,6 @@ def grade(state):
     score += 0.42 * int(investigated)
     score -= false_penalty
 
-    # Safety clamp — handles heavy false-action edge cases
-    score = max(0.01, min(0.99, score))
+    # Strict clamp to ensure 0 < score < 1
+    score = max(0.001, min(0.999, score))
     return round(score, 4)
