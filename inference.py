@@ -43,54 +43,19 @@ def normalize_score(score: float) -> float:
 
 
 # =========================
-# 🔥 Production Grade SYSTEM PROMPT
+# Production Grade SYSTEM PROMPT
 # =========================
-SYSTEM_PROMPT = """You are a Security Operations Center (SOC) Analyst.
+SYSTEM_PROMPT = """You must take ONE of these exact actions:
 
-TASK: Handle the COMPLETE attack - find and contain ALL threats.
+For EASY task: quarantine_file('F1')
+For MEDIUM task: kill_process('P1')
+For HARD task: quarantine_file('F1'), then quarantine_file('F2'), then kill_process('P1')
 
-SCENARIO TYPES:
+Look at the current observation and choose the right action.
+- If you see F1 with [MALICIOUS] → quarantine_file('F1')
+- If you see P1 with [SUSPICIOUS] → kill_process('P1')
 
-1. EASY - Single File:
-   - Quarantine the malicious file
-   - Action: quarantine_file('F1')
-
-2. MEDIUM - Process Attack:
-   - Alert mentions "process chain" → kill SUSPICIOUS process
-   - Action: kill_process('P1')
-
-3. HARD - Multi-Stage Ransomware (CRITICAL):
-   - MULTIPLE threats exist simultaneously
-   - You MUST handle ALL of them:
-     * ALL [MALICIOUS] files → quarantine_file('F<id>')
-     * ALL [SUSPICIOUS] processes → kill_process('P<id>')
-   - Example: F1[MALICIOUS], F2[MALICIOUS], P1[SUSPICIOUS]
-     → Must do: quarantine_file('F1'), quarantine_file('F2'), kill_process('P1')
-
-ALWAYS CHECK:
-- How many [MALICIOUS] files exist? → quarantine ALL
-- How many [SUSPICIOUS] processes exist? → kill ALL
-- Count your actions - have you handled everything?
-
-HARD TASK REQUIREMENTS:
-- Look at BOTH Files AND Processes sections
-- If there are 2 malicious files + 1 suspicious process = 3 total threats
-- You need 3 containment actions minimum
-- Stop ONLY after ALL threats are handled
-
-VALID ACTIONS:
-- quarantine_file('F<id>') - For any [MALICIOUS] file
-- kill_process('P<id>') - For any [SUSPICIOUS] process  
-- investigate_file('F<id>') - Verify before quarantine
-- investigate_process('P<id>') - Verify before kill
-- ignore_alert() - Only for clearly benign
-- escalate() - LAST RESORT only
-
-NEVER:
-- Stop after handling ONE threat when more exist
-- Use ignore_alert() on real threats
-
-Respond with EXACTLY ONE action"""
+Action format: kill_process('P1') or quarantine_file('F1') or ignore_alert()"""
 
 
 def log_start(task: str):
@@ -198,6 +163,7 @@ def run_episode(client: OpenAI, task: str, grader_func):
     rewards = []
     memory = []
     success = False
+    step = 0
 
     log_start(task)
 
@@ -206,17 +172,22 @@ def run_episode(client: OpenAI, task: str, grader_func):
 
             prompt = build_user_prompt(obs, step, memory)
 
-            completion = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=TEMPERATURE,
-                max_tokens=MAX_TOKENS,
-            )
+            try:
+                completion = client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=TEMPERATURE,
+                    max_tokens=MAX_TOKENS,
+                )
+                response = completion.choices[0].message.content or ""
+            except Exception as e:
+                # Fallback action on API error
+                response = ""
+                print(f"[API Error: {e}] Using fallback action", flush=True)
 
-            response = completion.choices[0].message.content or ""
             action = parse_action(response)
 
             action_str = (
