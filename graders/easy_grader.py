@@ -3,12 +3,12 @@ def grade(state):
     direct_contained = len(state.quarantined_files) > 0
     investigated = state.flags.get("investigated", False)
     
-    # 0.5 for direct containment, +0.5 if investigated first
+    # 0.5 for direct containment, +0.49 if investigated first
     score = 0.5 * int(direct_contained)
     if investigated:
-        score += 0.5
-    # But if quarantined something, at least get 0.5 even without formal investigation
+        score += 0.49
     elif direct_contained:
         score = 0.5
     
-    return max(0.0, min(1.0, score))
+    # Strictly between 0 and 1: (0.01, 0.99)
+    return max(0.01, min(0.99, score))
