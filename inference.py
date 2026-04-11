@@ -29,7 +29,7 @@ TASK_GRADER_MAP = {
 BENCHMARK = "security-incident-soc"
 
 def safe_score(score: float) -> float:
-    """Clamp score to strictly [0.1, 0.99] to pass OpenEnv (0,1) validation."""
+    """Clamp score to strictly (0, 1) range: [0.1, 0.99] to pass OpenEnv validation."""
     try:
         val = float(score)
     except (TypeError, ValueError):
@@ -139,7 +139,7 @@ def fallback_action(observation, memory: List[Dict]) -> Action:
         target = max(unacted_files, key=lambda x: x.get("entropy", 0))
         return Action(type="investigate_file", target_id=target["id"])
 
-    unacted_procs = [p for p in processes if p.get("id") not in acted_ids]
+    unacted_procs = [p for p in processes if f.get("id") not in acted_ids]
     if unacted_procs:
         return Action(type="investigate_process", target_id=unacted_procs[0]["id"])
 

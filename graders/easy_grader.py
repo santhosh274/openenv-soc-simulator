@@ -1,14 +1,14 @@
 import math
 
 def safe_score(score: float) -> float:
-    """Clamp score to strictly [0.1, 0.99] to pass OpenEnv (0,1) validation."""
+    """Clamp score to strictly (0, 1) range: [0.1, 0.99] to pass OpenEnv validation."""
     try:
         val = float(score)
     except (TypeError, ValueError):
         return 0.1
     if math.isnan(val) or math.isinf(val):
         return 0.1
-    # Reddit-recommended strict clamp
+    # Reddit-recommended strict clamp: guarantees 0.0 < score < 1.0
     return max(0.1, min(0.99, val))
 
 def grade(state):

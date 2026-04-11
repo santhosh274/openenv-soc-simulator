@@ -1,7 +1,7 @@
 import math
 
 def safe_score(score: float) -> float:
-    """Clamp score to strictly [0.1, 0.99] to pass OpenEnv (0,1) validation."""
+    """Clamp score to strictly (0, 1) range: [0.1, 0.99] to pass OpenEnv validation."""
     try:
         val = float(score)
     except (TypeError, ValueError):
