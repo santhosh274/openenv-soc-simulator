@@ -1,18 +1,17 @@
 import math
 
 def safe_score(score: float) -> float:
-    """Clamp score to strictly (0, 1) range: [0.1, 0.99] to pass OpenEnv validation."""
+    """Clamp score to strictly (0, 1): [0.1, 0.99] to pass OpenEnv validation."""
     try:
         val = float(score)
     except (TypeError, ValueError):
         return 0.1
     if math.isnan(val) or math.isinf(val):
         return 0.1
-    # Reddit-recommended strict clamp: guarantees 0.0 < score < 1.0
+    # Strict clamp: guarantees 0.0 < score < 1.0
     return max(0.1, min(0.99, val))
 
 def grade(state):
-    """Task 1: Known Malware — Grader"""
     malicious_ids = {f.id for f in state.files if f.is_malicious}
     correctly_quarantined = malicious_ids & set(state.quarantined_files)
     malicious_quarantined = len(correctly_quarantined) > 0

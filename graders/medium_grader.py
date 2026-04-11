@@ -1,7 +1,7 @@
 import math
 
 def safe_score(score: float) -> float:
-    """Clamp score to strictly (0, 1) range: [0.1, 0.99] to pass OpenEnv validation."""
+    """Clamp score to strictly (0, 1): [0.1, 0.99] to pass OpenEnv validation."""
     try:
         val = float(score)
     except (TypeError, ValueError):
@@ -11,7 +11,6 @@ def safe_score(score: float) -> float:
     return max(0.1, min(0.99, val))
 
 def grade(state):
-    """Task 2: Behavioral Attack — Grader"""
     suspicious_ids = {p.id for p in state.processes if p.suspicious}
     correctly_killed = suspicious_ids & set(state.killed_processes)
     process_handled = len(correctly_killed) > 0
