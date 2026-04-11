@@ -32,16 +32,16 @@ BENCHMARK = "security-incident-soc"
 def safe_score(score: float) -> float:
     """
     Strictly enforce open interval (0, 1).
-    Clamps to [0.1, 0.99] — both are strictly inside (0, 1).
+    Clamps to [0.01, 0.99] — both are strictly inside (0, 1).
     Handles NaN, Inf, and non-numeric input defensively.
     """
     try:
         val = float(score)
     except (TypeError, ValueError):
-        return 0.1
+        return 0.01
     if math.isnan(val) or math.isinf(val):
-        return 0.1
-    return max(0.1, min(0.99, val))
+        return 0.01
+    return max(0.01, min(0.99, val))
 
 
 SYSTEM_PROMPT = """You are a Security Operations Center (SOC) analyst AI.
