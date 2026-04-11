@@ -28,7 +28,13 @@ TASK_GRADER_MAP = {
 }
 BENCHMARK = "security-incident-soc"
 
+
 def safe_score(score: float) -> float:
+    """
+    Strictly enforce open interval (0, 1).
+    Clamps to [0.1, 0.99] — both are strictly inside (0, 1).
+    Handles NaN, Inf, and non-numeric input defensively.
+    """
     try:
         val = float(score)
     except (TypeError, ValueError):
@@ -37,39 +43,54 @@ def safe_score(score: float) -> float:
         return 0.1
     return max(0.1, min(0.99, val))
 
+
 SYSTEM_PROMPT = """You are a Security Operations Center (SOC) analyst AI.
 Respond to each security incident by taking exactly ONE action per turn.
 Available actions (use EXACT format shown):
-investigate_file('FILE_ID')        - Examine a suspicious file
-investigate_process('PROCESS_ID')  - Examine a suspicious process
-quarantine_file('FILE_ID')         - Isolate a malicious file
-kill_process('PROCESS_ID')         - Stop a malicious process
-ignore_alert()                     - Dismiss the alert (use rarely)
-escalate()                         - Escalate to senior analyst (LAST RESORT ONLY)
+  investigate_file('FILE_ID')        - Examine a suspicious file
+  investigate_process('PROCESS_ID')  - Examine a suspicious process
+  quarantine_file('FILE_ID')         - Isolate a malicious file
+  kill_process('PROCESS_ID')         - Stop a malicious process
+  ignore_alert()                     - Dismiss the alert (use rarely)
+  escalate()                         - Escalate to senior analyst (LAST RESORT ONLY)
 
 Decision rules:
-1. NEVER escalate unless you have investigated ALL items and still cannot determine a safe action.
-2. High entropy files (>7.0) or explicitly marked [MALICIOUS] → quarantine immediately.
-3. Processes marked [SUSPICIOUS] or with weird names → kill immediately.
-4. Handle ALL threats in the environment. Do not stop after the first one.
+1. Files marked [MALICIOUS] or with entropy > 7.0  → quarantine_file('ID') immediately.
+2. Processes marked [SUSPICIOUS]                   → kill_process('ID') immediately.
+3. Status unknown                                  → investigate before acting.
+4. Handle ALL threats — do not stop after the first one.
+5. NEVER escalate unless you have examined everything and still cannot act.
+
 Output exactly ONE action and nothing else. Example: quarantine_file('F1')"""
+
 
 def log_start(task: str):
     print(f"[START] task={task} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
+
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]):
-    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error or 'null'}", flush=True)
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} "
+        f"done={str(done).lower()} error={error or 'null'}",
+        flush=True,
+    )
+
 
 def log_end(success: bool, steps: int, rewards: List[float], score: float):
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str} task_score={score:.4f}", flush=True)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} "
+        f"rewards={rewards_str} task_score={score:.4f}",
+        flush=True,
+    )
+
 
 def build_user_prompt(observation, step: int, memory: List[Dict]) -> str:
     alerts = observation.alerts or []
     files = observation.file_metadata or []
     processes = observation.process_tree or []
     last_result = observation.last_action_result or "None"
-    
+
     alert_lines = "\n".join([f"  - {a}" for a in alerts]) or "  None"
     file_lines = "\n".join([
         f"  - ID:{f.get('id')} Name:{f.get('name')} Entropy:{f.get('entropy')} "
@@ -84,18 +105,22 @@ def build_user_prompt(observation, step: int, memory: List[Dict]) -> str:
     memory_lines = "\n".join(
         [f"  - Step {m['step']}: {m['action']} → {m['result']}" for m in memory[-3:]]
     ) or "  None"
-    
+
     suspicious_count = sum(1 for p in processes if p.get("suspicious"))
     malicious_count = sum(1 for f in files if f.get("is_malicious"))
     multi_hint = ""
     if suspicious_count > 1 or malicious_count > 1:
-        multi_hint = f"\n⚠️ ALERT: {malicious_count} malicious file(s) and {suspicious_count} suspicious process(es) detected. Handle ALL.\n"
-        
+        multi_hint = (
+            f"\n⚠️ ALERT: {malicious_count} malicious file(s) and "
+            f"{suspicious_count} suspicious process(es) detected. Handle ALL.\n"
+        )
+
     return (
         f"Step {step}/{MAX_STEPS}\nAlerts:\n{alert_lines}\nFiles:\n{file_lines}\n"
         f"Processes:\n{proc_lines}\nRecent History:\n{memory_lines}\n"
         f"Last result: {last_result}\n{multi_hint}\nChoose next action:"
     )
+
 
 def parse_action(response_text: str) -> Action:
     response_text = response_text.strip()
@@ -113,36 +138,66 @@ def parse_action(response_text: str) -> Action:
             return Action(type=action, target_id=match.group(1) if match.groups() else None)
     return Action(type="escalate", target_id=None)
 
+
 def fallback_action(observation, memory: List[Dict]) -> Action:
+    """
+    Observation-driven fallback used when the LLM API is unavailable.
+    Takes the best possible action based on what is visible in the observation.
+
+    Priority:
+      1. Quarantine high-entropy or malicious files not yet acted on
+      2. Kill suspicious / anomalous processes not yet acted on
+      3. Investigate unexamined files (highest entropy first)
+      4. Investigate unexamined processes
+      5. escalate() only as a true last resort
+    """
     files = observation.file_metadata or []
     processes = observation.process_tree or []
+
+    # Build set of IDs already acted on from memory
     acted_ids: set = set()
     for m in memory:
         id_match = re.search(r"\('([^']+)'\)", m.get("action", ""))
-        if id_match: acted_ids.add(id_match.group(1))
+        if id_match:
+            acted_ids.add(id_match.group(1))
 
+    # 1. Quarantine malicious / high-entropy files
     for f in files:
         fid = f.get("id")
-        if fid not in acted_ids and f.get("entropy", 0) > 7.0:
+        if fid not in acted_ids and (
+            f.get("is_malicious") or f.get("entropy", 0) > 7.0
+        ):
             return Action(type="quarantine_file", target_id=fid)
+
+    # 2. Kill suspicious processes
     for p in processes:
-        pid = p.get("id")
+        pid = p.get("id")                       # FIX: was using `f` (stale file var)
         if pid not in acted_ids:
             name = p.get("name", "").lower()
             parent = p.get("parent")
-            if parent is None or any(k in name for k in ["crypt", "encrypt", "ransom", "svchost32", "cmd32", "tmp", "miner"]):
+            is_suspicious = p.get("suspicious", False)
+            has_bad_name = any(
+                k in name
+                for k in ["crypt", "encrypt", "ransom", "svchost32", "cmd32", "tmp", "miner"]
+            )
+            if is_suspicious or parent is None or has_bad_name:
                 return Action(type="kill_process", target_id=pid)
 
+    # 3. Investigate unexamined files (highest entropy first — most informative)
     unacted_files = [f for f in files if f.get("id") not in acted_ids]
     if unacted_files:
         target = max(unacted_files, key=lambda x: x.get("entropy", 0))
         return Action(type="investigate_file", target_id=target["id"])
 
-    unacted_procs = [p for p in processes if f.get("id") not in acted_ids]
+    # 4. Investigate unexamined processes
+    #    FIX: original used `f.get("id")` here (wrong variable — used stale file `f`)
+    unacted_procs = [p for p in processes if p.get("id") not in acted_ids]
     if unacted_procs:
         return Action(type="investigate_process", target_id=unacted_procs[0]["id"])
 
+    # 5. True last resort
     return Action(type="escalate", target_id=None)
+
 
 def run_episode(client: OpenAI, task: str, grader_func):
     env = SecurityIncidentEnv(TASK_SCENARIO_MAP[task])
@@ -151,59 +206,95 @@ def run_episode(client: OpenAI, task: str, grader_func):
     memory: List[Dict] = []
     success = False
     step = 0
+    # Pre-initialize so `score` is always bound even if an exception fires
+    # before the grader is reached — prevents UnboundLocalError in finally.
     score = safe_score(0.0)
+
     log_start(task)
+
     try:
         for step in range(1, MAX_STEPS + 1):
             prompt = build_user_prompt(obs, step, memory)
             api_ok = False
+
             try:
                 completion = client.chat.completions.create(
                     model=MODEL_NAME,
-                    messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
-                    temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=TEMPERATURE,
+                    max_tokens=MAX_TOKENS,
                 )
                 response = completion.choices[0].message.content or ""
                 api_ok = True
             except Exception as e:
                 response = ""
                 print(f"[API Error: {e}] Using heuristic fallback", flush=True)
-                
+
             action = parse_action(response) if api_ok else fallback_action(obs, memory)
-            action_str = f"{action.type}('{action.target_id}')" if action.target_id else f"{action.type}()"
-            
+            action_str = (
+                f"{action.type}('{action.target_id}')"
+                if action.target_id
+                else f"{action.type}()"
+            )
+
             obs, reward, done, _ = env.step(action)
             reward_val = reward.value if hasattr(reward, "value") else float(reward)
             reward_val = safe_score(reward_val)
             rewards.append(reward_val)
-            
+
             error = getattr(obs, "last_action_result", None)
             memory.append({"step": step, "action": action_str, "result": error})
             log_step(step, action_str, reward_val, done, error)
-            if done: break
-                
+
+            if done:
+                break
+
         raw_score = grader_func(env.state)
         score = safe_score(raw_score)
-        success = round(score, 4) >= 0.5
+        success = score >= 0.5
+
+    except Exception as e:
+        print(f"[Episode Error: {e}] Returning safe fallback score", flush=True)
+        score = safe_score(score)  # score is always bound from initialization above
+
     finally:
-        score = safe_score(score)
+        # FIX: `return` was previously inside `finally`, which is a Python anti-pattern
+        # that silently suppresses any exception from the try block.
+        # Moved logging here; the actual return is OUTSIDE finally below.
         log_end(success, step, rewards, score)
-        return {"task": task, "success": success, "score": score, "steps": step, "rewards": rewards}
+
+    return {
+        "task": task,
+        "success": success,
+        "score": score,
+        "steps": step,
+        "rewards": rewards,
+    }
+
 
 def main():
     if not HF_TOKEN or len(HF_TOKEN.strip()) < 10:
-        print("⚠️  WARNING: HF_TOKEN is missing or invalid. Fallback actions will be used.", flush=True)
+        print(
+            "⚠️  WARNING: HF_TOKEN is missing or invalid. "
+            "Heuristic fallback actions will be used.",
+            flush=True,
+        )
     client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "")
     results = []
     for task in TASKS:
         result = run_episode(client, task, TASK_GRADER_MAP[task])
         results.append(result)
+
     print("\n" + "=" * 60, flush=True)
     print("FINAL RESULTS", flush=True)
     print("=" * 60, flush=True)
     for r in results:
         print(f"{r['task']} → Score: {r['score']:.4f} | Success: {r['success']}", flush=True)
     print("=" * 60, flush=True)
+
 
 if __name__ == "__main__":
     main()
