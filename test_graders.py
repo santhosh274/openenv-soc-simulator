@@ -38,9 +38,8 @@ def make_state(
 
 
 def check_strict(score, label):
-    """Assert score is strictly in (0.0, 1.0)."""
-    assert score > 0.0,  f"FAIL [{label}]: score={score} is <= 0.0"
-    assert score < 1.0,  f"FAIL [{label}]: score={score} is >= 1.0"
+    """Assert score is exactly 0.0 or 1.0."""
+    assert score == 0.0 or score == 1.0, f"FAIL [{label}]: score={score} is not 0.0 or 1.0"
     print(f"  PASS [{label}]: score={score}")
 
 
@@ -73,7 +72,11 @@ def test_easy():
 
     # Scores must differ between states
     s1 = make_state()
-    s2 = make_state(quarantined=["F1"], investigated=True)
+    s2 = make_state(
+        quarantined=["F1"], 
+        investigated=True,
+        files=[FileSample(id='F1', name='malware.exe', entropy=8.0, is_malicious=True)]
+    )
     assert easy_grader.grade(s1) != easy_grader.grade(s2), "FAIL: grader is constant"
     print("  PASS [non-constant]")
 
@@ -108,7 +111,11 @@ def test_medium():
 
     # Non-constant
     s1 = make_state(false_actions=10)
-    s2 = make_state(killed=["P1"], investigated=True)
+    s2 = make_state(
+        killed=["P1"], 
+        investigated=True,
+        processes=[Process(id='P1', name='bad.exe', parent=None, suspicious=True)]
+    )
     assert medium_grader.grade(s1) != medium_grader.grade(s2), "FAIL: grader is constant"
     print("  PASS [non-constant]")
 
@@ -153,8 +160,12 @@ def test_hard():
 
     # Non-constant
     s1 = make_state(false_actions=10, files=HARD_FILES, processes=HARD_PROCS)
-    s2 = make_state(quarantined=["F1", "F2"], killed=["P1"],
-                    files=[HARD_FILES[2]], processes=[])
+    s2 = make_state(
+        quarantined=["F1", "F2"], killed=["P1"],
+        step_count=3, max_steps=8, false_actions=0,
+        files=HARD_FILES,
+        processes=HARD_PROCS
+    )
     assert hard_grader.grade(s1) != hard_grader.grade(s2), "FAIL: grader is constant"
     print("  PASS [non-constant]")
 
