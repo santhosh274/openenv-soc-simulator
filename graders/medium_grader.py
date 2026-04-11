@@ -1,26 +1,16 @@
 import math
 
-
 def safe_score(score: float) -> float:
-    """
-    Strictly enforce open interval (0, 1).
-    Handles NaN, Inf, non-numeric input.
-    Clamps to [0.1, 0.99] — both values are strictly inside (0, 1).
-    """
+    """Clamp strictly inside (0, 1) using [0.01, 0.99]."""
     try:
         val = float(score)
     except (TypeError, ValueError):
-        return 0.1
+        return 0.01
     if math.isnan(val) or math.isinf(val):
-        return 0.1
-    return max(0.1, min(0.99, val))
-
+        return 0.01
+    return max(0.01, min(0.99, val))
 
 def _get(obj, attr, default=None):
-    """
-    Safe getter: works whether obj is a plain object (attribute access)
-    or a dict (key access). Returns default on any failure.
-    """
     try:
         return getattr(obj, attr, default)
     except Exception:
@@ -30,30 +20,16 @@ def _get(obj, attr, default=None):
     except Exception:
         return default
 
-
 def grade(state):
     """
     Task 2: Behavioral Attack
-
-    Score table (strictly in (0, 1)):
-    ┌──────────────────────────────────────┬───────┐
-    │ Component                            │ Value │
-    ├──────────────────────────────────────┼───────┤
-    │ base (always)                        │  0.10 │
-    │ + investigated flag set              │  0.35 │
-    │ + suspicious process correctly killed│  0.42 │
-    │ - false action penalty (capped)      │ -0.34 │
-    ├──────────────────────────────────────┼───────┤
-    │ Max achievable                       │  0.87 │  ← never hits 1.0
-    │ Min (base − max penalty)             │ -0.24 │  ← safe_score floors to 0.1
-    └──────────────────────────────────────┴───────┘
+    Raw score range: base=0.05 .. max=0.77, penalties capped so min>0.
     """
     try:
         processes = _get(state, "processes") or []
         killed = set(_get(state, "killed_processes") or [])
         flags = _get(state, "flags") or {}
 
-        # IDs of truly suspicious processes — safe attribute access
         suspicious_ids = {
             _get(p, "id")
             for p in processes
@@ -61,22 +37,21 @@ def grade(state):
         }
         suspicious_ids.discard(None)
 
-        # Credit only if a SUSPICIOUS process was correctly killed
         correctly_killed = suspicious_ids & killed
         process_handled = len(correctly_killed) > 0
 
         investigated = bool(flags.get("investigated", False))
         false_count = int(flags.get("false_actions", 0) or 0)
 
-        # Cap penalty so it cannot erase the base + partial gains entirely
-        false_penalty = min(false_count * 0.17, 0.34)
+        # Cap penalty so score never drops below base (0.05)
+        false_penalty = min(false_count * 0.17, 0.05)
 
-        score = 0.10                                  # base — always > 0
-        score += 0.35 * int(investigated)             # investigation credit
-        score += 0.42 * int(process_handled)          # correct kill credit
-        score -= false_penalty                        # false action penalty
+        score = 0.05                                # base > 0
+        score += 0.30 * int(investigated)           # investigation bonus
+        score += 0.42 * int(process_handled)        # correct kill bonus
+        score -= false_penalty                      # capped penalty
+        # Max = 0.05 + 0.30 + 0.42 = 0.77 (< 0.99)
 
         return safe_score(score)
-
     except Exception:
-        return safe_score(0.1)
+        return safe_score(0.05)
