@@ -29,14 +29,12 @@ TASK_GRADER_MAP = {
 BENCHMARK = "security-incident-soc"
 
 def safe_score(score: float) -> float:
-    """Clamp score to strictly (0, 1): [0.1, 0.99] to pass OpenEnv validation."""
     try:
         val = float(score)
     except (TypeError, ValueError):
         return 0.1
     if math.isnan(val) or math.isinf(val):
         return 0.1
-    # Strict clamp: guarantees 0.0 < score < 1.0
     return max(0.1, min(0.99, val))
 
 SYSTEM_PROMPT = """You are a Security Operations Center (SOC) analyst AI.

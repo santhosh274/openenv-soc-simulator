@@ -8,7 +8,6 @@ def safe_score(score: float) -> float:
         return 0.1
     if math.isnan(val) or math.isinf(val):
         return 0.1
-    # Strict clamp: guarantees 0.0 < score < 1.0
     return max(0.1, min(0.99, val))
 
 def grade(state):
